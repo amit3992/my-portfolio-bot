@@ -1,6 +1,17 @@
 # My Portfolio Chatbot Backend
 
-A FastAPI-based backend service that provides a conversational interface to interact with my portfolio content using RAG (Retrieval Augmented Generation) and LLM integration.
+This is the backend for a personal AI chatbot that lives on [uh-mit.com](https://uh-mit.com). It answers questions about my resume, projects, and experience by using a combination of:
+
+- 🦙 **Mistral via Ollama** (for local dev) (Work in progress)
+- 🤖 **OpenAI GPT-4o** (for hosted use)
+- 🔍 **FAISS vector store** (for retrieval-augmented generation)
+- ⚡ **FastAPI** (for fast, async API serving)
+
+### ✨ Features
+- Resume Q&A with RAG (retrieval-augmented generation)
+- Dual LLM support (local Ollama / remote OpenAI)
+- Embedded chatbot UI on portfolio site
+- Easy to run locally with Python
 
 ## Features
 
