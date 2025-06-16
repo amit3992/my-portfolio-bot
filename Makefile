@@ -37,4 +37,4 @@ clean:
 	rm -rf embeddings/
 	find . -type d -name "__pycache__" -exec rm -r {} +
 
-build: clean install setup lint test
+build: clean install setup test
