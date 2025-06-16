@@ -3,12 +3,13 @@ from langchain_community.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from dotenv import load_dotenv
 from load_resume import extract_text_from_pdf
+from load_resume import get_resume_from_r2
 import os
 
 load_dotenv()
 
-def load_resume_embeddings(pdf_path="data/resume.pdf"):
-    text = extract_text_from_pdf(pdf_path)
+def load_resume_embeddings():
+    text = get_resume_from_r2()
     splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
     chunks = splitter.split_text(text)
     embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
