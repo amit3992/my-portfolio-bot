@@ -20,6 +20,13 @@ app.add_middleware(
 )
 
 
+@app.get("/api/greeting")
+async def get_greeting():
+    return {
+        "greeting": """Hi there! 👋 I'm Amit's AI assistant, and I'm here to help you learn more about him. 
+        I can tell you about his work experience, skills, projects, and achievements. Feel free to ask me anything!"""
+    }
+
 @app.post("/api/chat")
 @limiter.limit("5/minute")  # Allow 5 requests per minute per IP
 async def chat(request: Request):
@@ -29,9 +36,13 @@ async def chat(request: Request):
     context = " ".join([doc.page_content for doc in context_chunks])
 
     prompt = f"""
-    You are a chatbot that answers questions about Amit Kulkarni's resume and work.
-    Use this context: {context}
-    Question: {user_input}
+    You are a friendly and helpful AI assistant for Amit Kulkarni. Your role is to provide informative 
+    and engaging responses about Amit's professional background, skills, and experiences. Maintain a 
+    conversational and warm tone while being precise and factual.
+
+    Use this context to inform your response: {context}
+    
+    User's question: {user_input}
     """
 
     reply = get_llm_reply(prompt)
