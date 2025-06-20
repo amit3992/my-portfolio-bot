@@ -1,5 +1,6 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException, Security, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security.api_key import APIKeyHeader
 from dotenv import load_dotenv
 from rag_engine import get_retriever
 from llm_router import get_llm_reply
@@ -7,6 +8,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from starlette.requests import Request
+import os
 
 load_dotenv()
 
@@ -14,6 +16,20 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+API_KEY = os.getenv("API_KEY")
+if not API_KEY:
+    raise ValueError("API_KEY environment variable is not set")
+
+api_key_header = APIKeyHeader(name="X-API-Key")
+
+async def get_api_key(api_key_header: str = Security(api_key_header)):
+    if api_key_header != API_KEY:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid API key"
+        )
+    return api_key_header
 
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
@@ -29,7 +45,7 @@ async def get_greeting():
 
 @app.post("/api/chat")
 @limiter.limit("5/minute")  # Allow 5 requests per minute per IP
-async def chat(request: Request):
+async def chat(request: Request, api_key: str = Depends(get_api_key)):
     data = await request.json()
     user_input = data["message"]
     context_chunks = get_retriever().get_relevant_documents(user_input)
