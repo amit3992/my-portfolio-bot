@@ -73,7 +73,7 @@ def get_resume_from_r2() -> str:
     """Main function to get resume text"""
     logger.info("Starting resume retrieval process")
     bucket_name = os.getenv('R2_BUCKET_NAME')
-    resume_key = os.getenv('R2_RESUME_KEY', 'resume.pdf')
+    resume_key = os.getenv('R2_RESUME_KEY', 'embeddings-resume-amit.pdf')
     
     if not bucket_name:
         logger.error("R2_BUCKET_NAME environment variable not set")
