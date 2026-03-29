@@ -65,7 +65,7 @@ async def get_greeting():
 async def chat(request: Request, api_key: str = Depends(get_api_key)):
     data = await request.json()
     user_input = data["message"]
-    context_chunks = get_retriever().get_relevant_documents(user_input)
+    context_chunks = get_retriever().invoke(user_input)
     context = " ".join([doc.page_content for doc in context_chunks])
 
     prompt = f"""
@@ -90,7 +90,7 @@ async def chat_stream(request: Request, api_key: str = Depends(get_api_key)):
     ip_address = get_remote_address(request)
     session_id = request.headers.get("X-Session-ID")
     user_agent = request.headers.get("User-Agent")
-    context_chunks = get_retriever().get_relevant_documents(user_input)
+    context_chunks = get_retriever().invoke(user_input)
     context = " ".join([doc.page_content for doc in context_chunks])
 
     prompt = f"""
