@@ -17,17 +17,31 @@ async def init_db():
         return
 
     # Strip pgbouncer param (not supported by asyncpg) and disable statement cache for pgbouncer compatibility
+    raw_url = database_url
     database_url = database_url.split("?")[0]
 
+    # Log connection details (mask password)
     try:
+        from urllib.parse import urlparse
+        parsed = urlparse(database_url)
+        logger.info(f"DB connect: host={parsed.hostname}, port={parsed.port}, db={parsed.path}, user={parsed.username}")
+        logger.info(f"DB URL had query params stripped: {'?' in raw_url}")
+    except Exception as e:
+        logger.info(f"Could not parse DB URL: {e}")
+
+    try:
+        logger.info("Attempting asyncpg.create_pool...")
         pool = await asyncpg.create_pool(
             database_url,
             min_size=1,
             max_size=5,
             statement_cache_size=0,
+            timeout=10,
+            command_timeout=10,
         )
+        logger.info("asyncpg pool created successfully")
     except Exception as e:
-        logger.error(f"Failed to connect to database: {e}")
+        logger.error(f"Failed to connect to database: {type(e).__name__}: {e}")
         logger.warning("Analytics disabled — app will continue without tracking")
         pool = None
         return

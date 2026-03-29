@@ -14,6 +14,9 @@ from slowapi.errors import RateLimitExceeded
 from starlette.requests import Request
 import json
 import os
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
 load_dotenv()
 
