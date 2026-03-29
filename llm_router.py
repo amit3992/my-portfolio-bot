@@ -1,4 +1,5 @@
 import os
+import json
 import google.generativeai as genai
 import anthropic
 from dotenv import load_dotenv
@@ -28,6 +29,8 @@ gemini_model = genai.GenerativeModel(
 claude_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 
+# --- Non-streaming (existing) ---
+
 def get_llm_reply(prompt: str) -> str:
     try:
         return query_gemini(prompt)
@@ -37,8 +40,7 @@ def get_llm_reply(prompt: str) -> str:
 
 def query_gemini(prompt: str) -> str:
     response = gemini_model.generate_content(prompt)
-    raw_content = response.text
-    return format_chatbot_response(raw_content)
+    return format_chatbot_response(response.text)
 
 
 def query_claude(prompt: str) -> str:
@@ -48,8 +50,38 @@ def query_claude(prompt: str) -> str:
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt}],
     )
-    raw_content = message.content[0].text
-    return format_chatbot_response(raw_content)
+    return format_chatbot_response(message.content[0].text)
+
+
+# --- Streaming ---
+
+def stream_llm_reply(prompt: str):
+    try:
+        first = True
+        for chunk in stream_gemini(prompt):
+            if first:
+                first = False
+            yield chunk
+    except Exception:
+        yield from stream_claude(prompt)
+
+
+def stream_gemini(prompt: str):
+    response = gemini_model.generate_content(prompt, stream=True)
+    for chunk in response:
+        if chunk.text:
+            yield chunk.text
+
+
+def stream_claude(prompt: str):
+    with claude_client.messages.stream(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1024,
+        system=SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": prompt}],
+    ) as stream:
+        for text in stream.text_stream:
+            yield text
 
 
 def format_chatbot_response(content: str) -> str:
