@@ -1,99 +1,93 @@
-# My Portfolio Chatbot Backend
+# Veda — Portfolio AI Chatbot
 
-This is the backend for a personal AI chatbot that lives on [uh-mit.com](https://uh-mit.com). It answers questions about my resume, projects, and experience by using a combination of:
+Veda is the AI assistant that lives on [uh-mit.com](https://uh-mit.com). It answers questions about Amit's resume, projects, and experience using retrieval-augmented generation (RAG) with streaming responses.
 
-- 🦙 **Mistral via Ollama** (for local dev) (Work in progress)
-- 🤖 **OpenAI GPT-4o** (for hosted use)
-- 🔍 **FAISS vector store** (for retrieval-augmented generation)
-- ⚡ **FastAPI** (for fast, async API serving)
+**"Veda"** comes from Sanskrit, meaning *knowledge*.
 
-### ✨ Features
-- Resume Q&A with RAG (retrieval-augmented generation)
-- Dual LLM support (local Ollama / remote OpenAI)
-- Embedded chatbot UI on portfolio site
-- Easy to run locally with Python
+## Tech Stack
+
+- **LLMs**: Google Gemini 2.0 Flash (primary) with Claude Sonnet fallback
+- **Embeddings**: Google `gemini-embedding-001`
+- **Vector Store**: FAISS for fast similarity search
+- **Backend**: FastAPI with SSE streaming
+- **Storage**: Cloudflare R2 (resume PDF) + Supabase Postgres (analytics & knowledge base)
+- **Deployment**: Railway with Nixpacks
 
 ## Features
 
-- PDF resume processing and embedding generation
-- RAG implementation using FAISS for efficient retrieval
-- Flexible LLM routing (OpenAI/Ollama support)
-- FastAPI server with CORS support
-- Environment-based configuration
+- **RAG Pipeline** — PDF resume is embedded and retrieved for context-aware answers
+- **Streaming Responses** — Real-time token streaming via Server-Sent Events
+- **Conversation Memory** — Maintains chat history within a session for natural follow-ups
+- **LLM Fallback** — Automatic failover from Gemini to Claude if the primary provider errors
+- **Analytics Dashboard** — Private admin dashboard tracking questions, visitors, sessions, errors, latency, and LLM provider usage
+- **Live Knowledge Base** — Add context snippets from the admin dashboard without redeploying
+- **IP Geolocation** — Visitor location tracking via ip-api.com
+- **Rate Limiting** — 5 requests/minute per IP
 
-## Prerequisites
+## Architecture
 
-- Python 3.12+
-- OpenAI API key (for embeddings and optional LLM)
-- Ollama (optional, for local LLM support)
-- Resume in PDF format
-
-## Installation
-
-1. Clone the repository
-2. Create and activate a virtual environment:
-   ```bash
-   make install
-   ```
-
-3. Copy `.env.example` to `.env` and configure:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your settings
-   ```
-
-4. Place your resume at `data/resume.pdf`
-
-5. Initialize the embeddings:
-   ```bash
-   make setup
-   ```
-
-## Usage
-
-1. Start the server:
-   ```bash
-   make run
-   ```
-
-2. The API will be available at `http://localhost:8000`
-
-3. Test the chat endpoint:
-   ```bash
-   curl -X POST http://localhost:8000/api/chat \
-     -H "Content-Type: application/json" \
-     -d '{"message": "What are your skills?"}'
-   ```
-
-## Development
-
-- Format code: `make format`
-- Run linting: `make lint`
-- Run tests: `make test`
-- Full build: `make build`
+```
+Resume PDF (R2) → Embeddings (Gemini) → FAISS Index
+                                            ↓
+User Question → RAG Retrieval → Context + Knowledge Snippets → LLM → Streamed Response
+                                                                        ↓
+                                                              Analytics (Supabase)
+```
 
 ## Project Structure
 
 ```
-.
-├── app.py              # FastAPI application
-├── rag_engine.py       # RAG implementation
-├── llm_router.py       # LLM routing logic
-├── load_resume.py      # PDF processing
-├── requirements.txt    # Dependencies
-└── Makefile           # Build automation
+├── app.py              # FastAPI app, routes, lifespan
+├── rag_engine.py       # PDF loading, embedding, FAISS retrieval
+├── llm_router.py       # LLM routing, streaming, fallback logic
+├── database.py         # Supabase connection, analytics logging, knowledge CRUD
+├── dashboard.py        # Admin dashboard (server-rendered HTML)
+├── load_resume.py      # Resume PDF processing
+├── requirements.txt    # Python dependencies
+├── railway.toml        # Railway deployment config
+├── Procfile            # Process entrypoint
+└── Makefile            # Dev automation
 ```
 
-## API Documentation
+## Setup
 
-When the server is running, visit:
-- OpenAPI docs: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+### Prerequisites
+
+- Python 3.12+
+- Google AI API key (Gemini)
+- Anthropic API key (Claude, for fallback)
+- Cloudflare R2 bucket with resume PDF
+- Supabase project (for analytics + knowledge base)
+
+### Installation
+
+```bash
+make install
+cp .env.example .env
+# Edit .env with your API keys and config
+```
+
+### Environment Variables
+
+| Variable | Description |
+|---|---|
+| `API_KEY` | API key for chat endpoints |
+| `GOOGLE_API_KEY` | Google AI / Gemini API key |
+| `ANTHROPIC_API_KEY` | Anthropic API key (fallback) |
+| `R2_ACCESS_KEY_ID` | Cloudflare R2 access key |
+| `R2_SECRET_ACCESS_KEY` | Cloudflare R2 secret key |
+| `R2_BUCKET_NAME` | R2 bucket name |
+| `R2_RESUME_KEY` | Resume PDF filename in R2 |
+| `DATABASE_URL` | Supabase Postgres connection string (pooler) |
+| `ADMIN_TOKEN` | Token for accessing the admin dashboard |
+
+### Run Locally
+
+```bash
+make run
+# Available at http://localhost:8000
+```
 
 ## License
 
 See [LICENSE](LICENSE) file.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
