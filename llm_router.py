@@ -1,8 +1,12 @@
 import os
+import time
 import json
+import logging
 import google.generativeai as genai
 import anthropic
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -56,14 +60,45 @@ def query_claude(prompt: str) -> str:
 # --- Streaming ---
 
 def stream_llm_reply(prompt: str):
+    """Yields (token, metadata_dict) — metadata only on the final yield."""
+    start = time.time()
+    provider = "gemini"
+    is_fallback = False
+    is_error = False
+    error_message = None
+    accumulated = ""
+
     try:
         first = True
         for chunk in stream_gemini(prompt):
             if first:
                 first = False
+            accumulated += chunk
             yield chunk
-    except Exception:
-        yield from stream_claude(prompt)
+    except Exception as e:
+        logger.warning(f"Gemini failed, falling back to Claude: {e}")
+        is_fallback = True
+        provider = "claude"
+        accumulated = ""
+        try:
+            for chunk in stream_claude(prompt):
+                accumulated += chunk
+                yield chunk
+        except Exception as e2:
+            logger.error(f"Claude fallback also failed: {e2}")
+            is_error = True
+            error_message = str(e2)
+
+    latency_ms = int((time.time() - start) * 1000)
+    # Attach metadata to the generator for the caller to read
+    stream_llm_reply._last_meta = {
+        "provider": provider,
+        "is_fallback": is_fallback,
+        "is_error": is_error,
+        "error_message": error_message,
+        "latency_ms": latency_ms,
+        "response_preview": accumulated[:200] if accumulated else None,
+    }
 
 
 def stream_gemini(prompt: str):
