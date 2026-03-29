@@ -59,7 +59,7 @@ app.include_router(dashboard_router)
 @app.get("/api/greeting")
 async def get_greeting():
     return {
-        "greeting": "Hey! I'm Amit's AI assistant. Ask me anything about his work, skills, or experience."
+        "greeting": "Hey! I'm Veda, Amit's AI assistant. Ask me anything about his work, skills, or experience."
     }
 
 async def build_prompt(user_input: str) -> str:
