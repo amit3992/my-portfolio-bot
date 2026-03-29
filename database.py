@@ -65,6 +65,15 @@ async def init_db():
                 EXCEPTION WHEN duplicate_column THEN NULL;
                 END $$;
             """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS knowledge_snippets (
+                id SERIAL PRIMARY KEY,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                label TEXT NOT NULL,
+                content TEXT NOT NULL,
+                active BOOLEAN DEFAULT TRUE
+            )
+        """)
     logger.info("Analytics database initialized")
 
 
@@ -139,3 +148,49 @@ async def log_chat_event(
             )
     except Exception as e:
         logger.error(f"Failed to log chat event: {e}")
+
+
+async def get_knowledge_snippets() -> list[dict]:
+    """Fetch all active knowledge snippets."""
+    if not pool:
+        return []
+    try:
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT id, label, content, created_at FROM knowledge_snippets WHERE active = TRUE ORDER BY created_at DESC"
+            )
+            return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"Failed to fetch knowledge snippets: {e}")
+        return []
+
+
+async def add_knowledge_snippet(label: str, content: str) -> int | None:
+    """Add a new knowledge snippet. Returns the new ID."""
+    if not pool:
+        return None
+    try:
+        async with pool.acquire() as conn:
+            row_id = await conn.fetchval(
+                "INSERT INTO knowledge_snippets (label, content) VALUES ($1, $2) RETURNING id",
+                label, content,
+            )
+            return row_id
+    except Exception as e:
+        logger.error(f"Failed to add knowledge snippet: {e}")
+        return None
+
+
+async def delete_knowledge_snippet(snippet_id: int) -> bool:
+    """Soft-delete a knowledge snippet."""
+    if not pool:
+        return False
+    try:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE knowledge_snippets SET active = FALSE WHERE id = $1", snippet_id
+            )
+            return True
+    except Exception as e:
+        logger.error(f"Failed to delete knowledge snippet: {e}")
+        return False

@@ -1,8 +1,8 @@
 import os
 from html import escape
-from fastapi import APIRouter, Query, HTTPException
-from fastapi.responses import HTMLResponse
-from database import pool
+from fastapi import APIRouter, Query, HTTPException, Form
+from fastapi.responses import HTMLResponse, RedirectResponse
+from database import pool, add_knowledge_snippet, delete_knowledge_snippet
 
 router = APIRouter()
 
@@ -142,6 +142,11 @@ async def dashboard(token: str = Query(...)):
                GROUP BY user_question ORDER BY cnt DESC LIMIT 15"""
         )
 
+        # Knowledge snippets
+        snippets = await conn.fetch(
+            "SELECT id, label, content, created_at FROM knowledge_snippets WHERE active = TRUE ORDER BY created_at DESC"
+        )
+
     # --- Build HTML fragments ---
 
     # Provider breakdown
@@ -240,6 +245,26 @@ async def dashboard(token: str = Query(...)):
             <span style="font-weight:600;color:#3b82f6">{q['cnt']}</span>
         </div>"""
 
+    # Knowledge snippets
+    snippet_rows = ""
+    for s in snippets:
+        ts = s["created_at"].strftime("%b %d %H:%M") if s["created_at"] else ""
+        label = esc(s["label"], 40)
+        content = esc(s["content"], 120)
+        sid = s["id"]
+        snippet_rows += f"""
+        <tr>
+            <td style="padding:8px;border-bottom:1px solid #eee;font-weight:600">{label}</td>
+            <td style="padding:8px;border-bottom:1px solid #eee">{content}</td>
+            <td style="padding:8px;border-bottom:1px solid #eee;white-space:nowrap">{ts}</td>
+            <td style="padding:8px;border-bottom:1px solid #eee">
+                <form method="POST" action="/admin/knowledge/delete?token={token}" style="margin:0">
+                    <input type="hidden" name="snippet_id" value="{sid}">
+                    <button type="submit" style="background:#ef4444;color:white;border:none;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px">Delete</button>
+                </form>
+            </td>
+        </tr>"""
+
     error_rate = round(total_errors / total * 100, 1) if total > 0 else 0
 
     html = f"""<!DOCTYPE html>
@@ -323,6 +348,32 @@ async def dashboard(token: str = Query(...)):
         </div>
     </div>
 
+    <div class="section">
+        <h2>Knowledge Base</h2>
+        <p style="color:#64748b;font-size:13px;margin-bottom:16px">Snippets are included in every chat response as additional context. Changes take effect immediately.</p>
+        <form method="POST" action="/admin/knowledge/add?token={token}" style="display:flex;gap:12px;margin-bottom:20px;align-items:flex-start">
+            <input type="text" name="label" placeholder="Label (e.g. Current Role)" required
+                   style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;width:200px">
+            <textarea name="content" placeholder="Content (e.g. Amit recently joined Intercom as a Senior FDE)" required rows="2"
+                      style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;flex:1;resize:vertical"></textarea>
+            <button type="submit"
+                    style="padding:8px 20px;background:#3b82f6;color:white;border:none;border-radius:8px;cursor:pointer;font-size:14px;white-space:nowrap">Add</button>
+        </form>
+        <table>
+            <thead>
+                <tr>
+                    <th>Label</th>
+                    <th>Content</th>
+                    <th>Added</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {snippet_rows or '<tr><td colspan="4" style="padding:16px;color:#94a3b8">No snippets yet. Add one above.</td></tr>'}
+            </tbody>
+        </table>
+    </div>
+
     <div class="three-col">
         <div class="section">
             <h2>LLM Providers</h2>
@@ -401,3 +452,28 @@ async def dashboard(token: str = Query(...)):
 </html>"""
 
     return HTMLResponse(html)
+
+
+@router.post("/admin/knowledge/add")
+async def add_snippet(
+    token: str = Query(...),
+    label: str = Form(...),
+    content: str = Form(...),
+):
+    verify_token(token)
+    await add_knowledge_snippet(label, content)
+    return RedirectResponse(
+        url=f"/admin/dashboard?token={token}", status_code=303
+    )
+
+
+@router.post("/admin/knowledge/delete")
+async def remove_snippet(
+    token: str = Query(...),
+    snippet_id: int = Form(...),
+):
+    verify_token(token)
+    await delete_knowledge_snippet(snippet_id)
+    return RedirectResponse(
+        url=f"/admin/dashboard?token={token}", status_code=303
+    )

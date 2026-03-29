@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from rag_engine import get_retriever
 from llm_router import get_llm_reply, stream_llm_reply
-from database import init_db, close_db, log_chat_event
+from database import init_db, close_db, log_chat_event, get_knowledge_snippets
 from dashboard import router as dashboard_router
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -59,15 +59,26 @@ async def get_greeting():
         "greeting": "Hey! I'm Amit's AI assistant. Ask me anything about his work, skills, or experience."
     }
 
+async def build_prompt(user_input: str) -> str:
+    context_chunks = get_retriever().invoke(user_input)
+    context = " ".join([doc.page_content for doc in context_chunks])
+
+    snippets = await get_knowledge_snippets()
+    snippet_text = ""
+    if snippets:
+        snippet_text = "\n\nAdditional context:\n" + "\n".join(
+            f"- {s['content']}" for s in snippets
+        )
+
+    return f"Context from Amit's resume: {context}{snippet_text}\n\nVisitor's message: {user_input}"
+
+
 @app.post("/api/chat")
 @limiter.limit("5/minute")
 async def chat(request: Request, api_key: str = Depends(get_api_key)):
     data = await request.json()
     user_input = data["message"]
-    context_chunks = get_retriever().invoke(user_input)
-    context = " ".join([doc.page_content for doc in context_chunks])
-
-    prompt = f"Context from Amit's resume: {context}\n\nVisitor's message: {user_input}"
+    prompt = await build_prompt(user_input)
 
     reply = get_llm_reply(prompt)
     return {"reply": reply}
@@ -81,10 +92,7 @@ async def chat_stream(request: Request, api_key: str = Depends(get_api_key)):
     ip_address = get_remote_address(request)
     session_id = request.headers.get("X-Session-ID")
     user_agent = request.headers.get("User-Agent")
-    context_chunks = get_retriever().invoke(user_input)
-    context = " ".join([doc.page_content for doc in context_chunks])
-
-    prompt = f"Context from Amit's resume: {context}\n\nVisitor's message: {user_input}"
+    prompt = await build_prompt(user_input)
 
     async def event_generator():
         for chunk in stream_llm_reply(prompt):
