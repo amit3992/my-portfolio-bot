@@ -92,13 +92,14 @@ async def chat(request: Request, api_key: str = Depends(get_api_key)):
 async def chat_stream(request: Request, api_key: str = Depends(get_api_key)):
     data = await request.json()
     user_input = data["message"]
+    history = data.get("history", [])  # [{role: "user"|"assistant", content: "..."}]
     ip_address = get_remote_address(request)
     session_id = request.headers.get("X-Session-ID")
     user_agent = request.headers.get("User-Agent")
     prompt = await build_prompt(user_input)
 
     async def event_generator():
-        for chunk in stream_llm_reply(prompt):
+        for chunk in stream_llm_reply(prompt, history=history):
             yield f"data: {json.dumps({'token': chunk})}\n\n"
         yield "data: [DONE]\n\n"
 

@@ -19,10 +19,15 @@ SYSTEM_PROMPT = (
     "- Keep responses short and natural — like a real conversation, not a resume recitation.\n"
     "- Only share details when specifically asked. Give 2-3 key points, not everything.\n"
     "- Use a warm, casual tone. No corporate speak.\n"
-    "- If asked something you don't know, say so briefly.\n"
+    "- If asked something you don't know from the provided context, say so honestly. "
+    "Don't guess or make up details about Amit.\n"
+    "- ONLY use facts from the provided context. Never invent roles, titles, preferences, "
+    "or details not explicitly stated in the context.\n"
     "- For non-resume questions, gently steer back: 'I'm best at answering questions about Amit!'\n"
     "- Never start responses with 'Great question!' or similar filler.\n"
     "- Keep most responses under 60 words. Only go longer if the question genuinely needs detail.\n"
+    "- You have conversation history — use it to understand follow-up questions. "
+    "If someone says 'yes', 'tell me more', etc., refer to what was discussed previously.\n"
 )
 
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
@@ -60,8 +65,8 @@ def query_claude(prompt: str) -> str:
 
 # --- Streaming ---
 
-def stream_llm_reply(prompt: str):
-    """Yields (token, metadata_dict) — metadata only on the final yield."""
+def stream_llm_reply(prompt: str, history: list[dict] = None):
+    """Yields tokens. Accepts optional conversation history."""
     start = time.time()
     provider = "gemini"
     is_fallback = False
@@ -70,10 +75,7 @@ def stream_llm_reply(prompt: str):
     accumulated = ""
 
     try:
-        first = True
-        for chunk in stream_gemini(prompt):
-            if first:
-                first = False
+        for chunk in stream_gemini(prompt, history):
             accumulated += chunk
             yield chunk
     except Exception as e:
@@ -82,7 +84,7 @@ def stream_llm_reply(prompt: str):
         provider = "claude"
         accumulated = ""
         try:
-            for chunk in stream_claude(prompt):
+            for chunk in stream_claude(prompt, history):
                 accumulated += chunk
                 yield chunk
         except Exception as e2:
@@ -102,19 +104,34 @@ def stream_llm_reply(prompt: str):
     }
 
 
-def stream_gemini(prompt: str):
-    response = gemini_model.generate_content(prompt, stream=True)
+def stream_gemini(prompt: str, history: list[dict] = None):
+    # Build multi-turn conversation for Gemini
+    contents = []
+    if history:
+        for msg in history:
+            role = "user" if msg["role"] == "user" else "model"
+            contents.append({"role": role, "parts": [{"text": msg["content"]}]})
+    contents.append({"role": "user", "parts": [{"text": prompt}]})
+
+    response = gemini_model.generate_content(contents, stream=True)
     for chunk in response:
         if chunk.text:
             yield chunk.text
 
 
-def stream_claude(prompt: str):
+def stream_claude(prompt: str, history: list[dict] = None):
+    # Build multi-turn messages for Claude
+    messages = []
+    if history:
+        for msg in history:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+    messages.append({"role": "user", "content": prompt})
+
     with claude_client.messages.stream(
         model="claude-sonnet-4-20250514",
         max_tokens=1024,
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
+        messages=messages,
     ) as stream:
         for text in stream.text_stream:
             yield text
