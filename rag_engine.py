@@ -11,7 +11,7 @@ def load_resume_embeddings():
     text = get_resume_from_r2()
     splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
     chunks = splitter.split_text(text)
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
     vectorstore = FAISS.from_texts(chunks, embedding=embeddings)
     vectorstore.save_local("embeddings")
     print(" Vector DB created locally.")
@@ -19,7 +19,7 @@ def load_resume_embeddings():
 def load_retriever():
     if not os.path.exists("embeddings"):
         load_resume_embeddings()
-    embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+    embeddings = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
     vectorstore = FAISS.load_local("embeddings", embeddings, allow_dangerous_deserialization=True)
     return vectorstore.as_retriever(search_type="similarity", k=3)
 
