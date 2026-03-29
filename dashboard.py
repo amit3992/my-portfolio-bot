@@ -2,7 +2,8 @@ import os
 from html import escape
 from fastapi import APIRouter, Query, HTTPException, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
-from database import pool, add_knowledge_snippet, delete_knowledge_snippet
+import database
+from database import add_knowledge_snippet, delete_knowledge_snippet
 
 router = APIRouter()
 
@@ -56,10 +57,10 @@ def parse_user_agent(ua: str | None) -> str:
 async def dashboard(token: str = Query(...)):
     verify_token(token)
 
-    if not pool:
+    if not database.pool:
         return HTMLResponse("<h1>Database not connected</h1>", status_code=503)
 
-    async with pool.acquire() as conn:
+    async with database.pool.acquire() as conn:
         # Total counts
         total = await conn.fetchval("SELECT COUNT(*) FROM chat_events")
         today = await conn.fetchval(
