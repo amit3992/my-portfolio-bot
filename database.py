@@ -16,7 +16,13 @@ async def init_db():
         logger.warning("DATABASE_URL not set — analytics disabled")
         return
 
-    pool = await asyncpg.create_pool(database_url, min_size=1, max_size=5)
+    try:
+        pool = await asyncpg.create_pool(database_url, min_size=1, max_size=5)
+    except Exception as e:
+        logger.error(f"Failed to connect to database: {e}")
+        logger.warning("Analytics disabled — app will continue without tracking")
+        pool = None
+        return
 
     async with pool.acquire() as conn:
         await conn.execute("""
