@@ -24,6 +24,10 @@ load_dotenv()
 @asynccontextmanager
 async def lifespan(app):
     await init_db()
+    logger = logging.getLogger(__name__)
+    logger.info("Building embeddings on startup...")
+    get_retriever()
+    logger.info("Embeddings ready.")
     yield
     await close_db()
 
