@@ -28,7 +28,7 @@ async def lifespan(app):
     logger.info("=== Portfolio Bot Starting ===")
     logger.info(f"OLLAMA_BASE_URL={os.getenv('OLLAMA_BASE_URL', 'https://ollama.com')}")
     logger.info(f"OLLAMA_MODEL={os.getenv('OLLAMA_MODEL', 'llama3.2:3b')}")
-    logger.info(f"OLLAMA_EMBED_MODEL={os.getenv('OLLAMA_EMBED_MODEL', 'nomic-embed-text')}")
+    logger.info(f"OLLAMA_EMBED_MODEL=N/A (using Google embeddings)")
     logger.info(f"OLLAMA_API_KEY set: {bool(os.getenv('OLLAMA_API_KEY'))}")
     logger.info(f"GOOGLE_API_KEY set: {bool(os.getenv('GOOGLE_API_KEY'))}")
     logger.info(f"DATABASE_URL set: {bool(os.getenv('DATABASE_URL'))}")
