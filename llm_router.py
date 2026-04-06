@@ -2,8 +2,8 @@ import os
 import time
 import json
 import logging
+import httpx
 import google.generativeai as genai
-import anthropic
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
@@ -33,22 +33,39 @@ SYSTEM_PROMPT = (
     "that shares knowledge about Amit. Only mention this when explicitly asked about your name.\n"
 )
 
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "https://ollama.com")
+OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 gemini_model = genai.GenerativeModel(
     "gemini-2.0-flash",
     system_instruction=SYSTEM_PROMPT,
 )
 
-claude_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-
 
 # --- Non-streaming (existing) ---
 
 def get_llm_reply(prompt: str) -> str:
     try:
-        return query_gemini(prompt)
+        return query_ollama(prompt)
     except Exception:
-        return query_claude(prompt)
+        return query_gemini(prompt)
+
+
+def query_ollama(prompt: str) -> str:
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": prompt},
+    ]
+    resp = httpx.post(
+        f"{OLLAMA_BASE_URL}/api/chat",
+        headers={"Authorization": f"Bearer {OLLAMA_API_KEY}"},
+        json={"model": OLLAMA_MODEL, "messages": messages, "stream": False},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return format_chatbot_response(resp.json()["message"]["content"])
 
 
 def query_gemini(prompt: str) -> str:
@@ -56,47 +73,36 @@ def query_gemini(prompt: str) -> str:
     return format_chatbot_response(response.text)
 
 
-def query_claude(prompt: str) -> str:
-    message = claude_client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=1024,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    return format_chatbot_response(message.content[0].text)
-
-
 # --- Streaming ---
 
 def stream_llm_reply(prompt: str, history: list[dict] = None):
     """Yields tokens. Accepts optional conversation history."""
     start = time.time()
-    provider = "gemini"
+    provider = "ollama"
     is_fallback = False
     is_error = False
     error_message = None
     accumulated = ""
 
     try:
-        for chunk in stream_gemini(prompt, history):
+        for chunk in stream_ollama(prompt, history):
             accumulated += chunk
             yield chunk
     except Exception as e:
-        logger.warning(f"Gemini failed, falling back to Claude: {e}")
+        logger.warning(f"Ollama failed, falling back to Gemini: {e}")
         is_fallback = True
-        provider = "claude"
+        provider = "gemini"
         accumulated = ""
         try:
-            for chunk in stream_claude(prompt, history):
+            for chunk in stream_gemini(prompt, history):
                 accumulated += chunk
                 yield chunk
         except Exception as e2:
-            logger.error(f"Claude fallback also failed: {e2}")
+            logger.error(f"Gemini fallback also failed: {e2}")
             is_error = True
             error_message = str(e2)
 
     latency_ms = int((time.time() - start) * 1000)
-    # Attach metadata to the generator for the caller to read
     stream_llm_reply._last_meta = {
         "provider": provider,
         "is_fallback": is_fallback,
@@ -107,8 +113,31 @@ def stream_llm_reply(prompt: str, history: list[dict] = None):
     }
 
 
+def stream_ollama(prompt: str, history: list[dict] = None):
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if history:
+        for msg in history:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+    messages.append({"role": "user", "content": prompt})
+
+    with httpx.stream(
+        "POST",
+        f"{OLLAMA_BASE_URL}/api/chat",
+        headers={"Authorization": f"Bearer {OLLAMA_API_KEY}"},
+        json={"model": OLLAMA_MODEL, "messages": messages, "stream": True},
+        timeout=60,
+    ) as resp:
+        resp.raise_for_status()
+        for line in resp.iter_lines():
+            if not line:
+                continue
+            data = json.loads(line)
+            token = data.get("message", {}).get("content", "")
+            if token:
+                yield token
+
+
 def stream_gemini(prompt: str, history: list[dict] = None):
-    # Build multi-turn conversation for Gemini
     contents = []
     if history:
         for msg in history:
@@ -120,24 +149,6 @@ def stream_gemini(prompt: str, history: list[dict] = None):
     for chunk in response:
         if chunk.text:
             yield chunk.text
-
-
-def stream_claude(prompt: str, history: list[dict] = None):
-    # Build multi-turn messages for Claude
-    messages = []
-    if history:
-        for msg in history:
-            messages.append({"role": msg["role"], "content": msg["content"]})
-    messages.append({"role": "user", "content": prompt})
-
-    with claude_client.messages.stream(
-        model="claude-sonnet-4-20250514",
-        max_tokens=1024,
-        system=SYSTEM_PROMPT,
-        messages=messages,
-    ) as stream:
-        for text in stream.text_stream:
-            yield text
 
 
 def format_chatbot_response(content: str) -> str:
