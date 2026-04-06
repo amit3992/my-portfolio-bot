@@ -23,11 +23,28 @@ load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app):
-    await init_db()
     logger = logging.getLogger(__name__)
+
+    logger.info("=== Portfolio Bot Starting ===")
+    logger.info(f"OLLAMA_BASE_URL={os.getenv('OLLAMA_BASE_URL', 'https://ollama.com')}")
+    logger.info(f"OLLAMA_MODEL={os.getenv('OLLAMA_MODEL', 'llama3.2:3b')}")
+    logger.info(f"OLLAMA_EMBED_MODEL={os.getenv('OLLAMA_EMBED_MODEL', 'nomic-embed-text')}")
+    logger.info(f"OLLAMA_API_KEY set: {bool(os.getenv('OLLAMA_API_KEY'))}")
+    logger.info(f"GOOGLE_API_KEY set: {bool(os.getenv('GOOGLE_API_KEY'))}")
+    logger.info(f"DATABASE_URL set: {bool(os.getenv('DATABASE_URL'))}")
+
+    logger.info("Initializing database...")
+    await init_db()
+    logger.info("Database initialized.")
+
     logger.info("Building embeddings on startup...")
-    get_retriever()
-    logger.info("Embeddings ready.")
+    try:
+        get_retriever()
+        logger.info("Embeddings ready.")
+    except Exception as e:
+        logger.error(f"Failed to build embeddings: {e}")
+
+    logger.info("=== Portfolio Bot Ready ===")
     yield
     await close_db()
 
