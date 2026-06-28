@@ -32,6 +32,18 @@ embeddings/
 data/*.pdf
 *.log
 
+# Resume PDF (personal data; pulled from R2 at runtime)
+embeddings-resume-amit.pdf
+*resume*.pdf
+
+# Generated eval drafts (regenerate via `make eval-gen`; merge good cases into dataset.yaml)
+evals/dataset.generated.yaml
+
+# promptfoo run artifacts
+evals/results.json
+evals/.promptfoo/
+.promptfoo/
+
 # macOS
 .DS_Store
 

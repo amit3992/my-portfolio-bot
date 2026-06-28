@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Migrated to OpenRouter
+- Replaced Ollama Cloud (chat) and Google Gemini (embeddings + fallback) with OpenRouter
+- Chat model: `deepseek/deepseek-v4-flash` (OpenAI-compatible API via the `openai` SDK)
+- Removed Gemini fallback path; rely on OpenRouter's built-in cross-provider failover
+- New env vars: `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL`, `OPENROUTER_MODEL`
+
+### Switched from RAG to full context
+- The résumé (~2.4K tokens) is now injected whole into every prompt instead of FAISS
+  retrieval — eliminating retrieval misses (e.g. enterprise customers, AI/LLM skills)
+- Removed FAISS, embeddings, and the startup index build; `rag_engine` now just loads
+  and caches the résumé (R2 in prod, local PDF for dev/evals)
+- Fixed a latent bug: `as_retriever(k=3)` was ignored (k belongs in `search_kwargs`)
+- Dropped deps: `langchain*`, `faiss-cpu`, `numpy`
+- Anchored resume/index paths to the module dir (CWD-independent)
+
+### Added evals
+- promptfoo suite (`evals/`) for answer-quality, behavior, and model bake-offs over the
+  real pipeline; LLM-as-judge via OpenRouter; 25 résumé-grounded draft cases generator
+
 ## v2.0.0 - 2026-03-29
 
 ### Analytics Dashboard

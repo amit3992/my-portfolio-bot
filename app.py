@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.security.api_key import APIKeyHeader
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-from rag_engine import get_retriever
+from rag_engine import get_resume_text
 from llm_router import get_llm_reply, stream_llm_reply
 from database import init_db, close_db, log_chat_event, get_knowledge_snippets
 from dashboard import router as dashboard_router
@@ -26,23 +26,21 @@ async def lifespan(app):
     logger = logging.getLogger(__name__)
 
     logger.info("=== Portfolio Bot Starting ===")
-    logger.info(f"OLLAMA_BASE_URL={os.getenv('OLLAMA_BASE_URL', 'https://ollama.com')}")
-    logger.info(f"OLLAMA_MODEL={os.getenv('OLLAMA_MODEL', 'llama3.2:3b')}")
-    logger.info(f"OLLAMA_EMBED_MODEL=N/A (using Google embeddings)")
-    logger.info(f"OLLAMA_API_KEY set: {bool(os.getenv('OLLAMA_API_KEY'))}")
-    logger.info(f"GOOGLE_API_KEY set: {bool(os.getenv('GOOGLE_API_KEY'))}")
+    logger.info(f"OPENROUTER_BASE_URL={os.getenv('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1')}")
+    logger.info(f"OPENROUTER_MODEL={os.getenv('OPENROUTER_MODEL', 'deepseek/deepseek-v4-flash')}")
+    logger.info(f"OPENROUTER_API_KEY set: {bool(os.getenv('OPENROUTER_API_KEY'))}")
     logger.info(f"DATABASE_URL set: {bool(os.getenv('DATABASE_URL'))}")
 
     logger.info("Initializing database...")
     await init_db()
     logger.info("Database initialized.")
 
-    logger.info("Building embeddings on startup...")
+    logger.info("Loading resume on startup...")
     try:
-        get_retriever()
-        logger.info("Embeddings ready.")
+        get_resume_text()
+        logger.info("Resume loaded.")
     except Exception as e:
-        logger.error(f"Failed to build embeddings: {e}")
+        logger.error(f"Failed to load resume: {e}")
 
     logger.info("=== Portfolio Bot Ready ===")
     yield
@@ -84,8 +82,7 @@ async def get_greeting():
     }
 
 async def build_prompt(user_input: str) -> str:
-    context_chunks = get_retriever().invoke(user_input)
-    context = " ".join([doc.page_content for doc in context_chunks])
+    resume = get_resume_text()
 
     snippets = await get_knowledge_snippets()
     snippet_text = ""
@@ -94,7 +91,7 @@ async def build_prompt(user_input: str) -> str:
             f"- {s['content']}" for s in snippets
         )
 
-    return f"Context from Amit's resume: {context}{snippet_text}\n\nVisitor's message: {user_input}"
+    return f"Amit's resume:\n{resume}{snippet_text}\n\nVisitor's message: {user_input}"
 
 
 @app.post("/api/chat")

@@ -1,4 +1,4 @@
-.PHONY: install lint test run clean build setup
+.PHONY: install lint test run clean build setup eval eval-gen
 
 # Python virtual environment
 VENV = venv
@@ -28,7 +28,13 @@ run:
 	$(PYTHON) -m uvicorn app:app --reload --port $(PORT)
 
 setup:
-	$(PYTHON) -c "from rag_engine import load_resume_embeddings; load_resume_embeddings()"
+	$(PYTHON) -c "from rag_engine import get_resume_text; print(len(get_resume_text()), 'chars loaded')"
+
+eval-gen:
+	$(PYTHON) evals/generate_dataset.py
+
+eval:
+	cd evals && npx promptfoo@latest eval
 
 clean:
 	rm -rf __pycache__
