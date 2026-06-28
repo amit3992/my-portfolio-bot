@@ -6,40 +6,40 @@ Veda is the AI assistant that lives on [uh-mit.com](https://uh-mit.com). It answ
 
 ## Tech Stack
 
-- **LLMs**: Google Gemini 2.0 Flash (primary) with Claude Sonnet fallback
-- **Embeddings**: Google `gemini-embedding-001`
-- **Vector Store**: FAISS for fast similarity search
+- **LLM**: OpenRouter — `deepseek/deepseek-v4-flash`
+- **Context**: Full résumé injected per request (it's ~2.4K tokens — no vector retrieval needed)
 - **Backend**: FastAPI with SSE streaming
 - **Storage**: Cloudflare R2 (resume PDF) + Supabase Postgres (analytics & knowledge base)
 - **Deployment**: Railway with Nixpacks
 
 ## Features
 
-- **RAG Pipeline** — PDF resume is embedded and retrieved for context-aware answers
+- **Full-Context Answers** — The entire résumé is fed to the model each call, so no retrieval misses
 - **Streaming Responses** — Real-time token streaming via Server-Sent Events
 - **Conversation Memory** — Maintains chat history within a session for natural follow-ups
-- **LLM Fallback** — Automatic failover from Gemini to Claude if the primary provider errors
 - **Analytics Dashboard** — Private admin dashboard tracking questions, visitors, sessions, errors, latency, and LLM provider usage
 - **Live Knowledge Base** — Add context snippets from the admin dashboard without redeploying
 - **IP Geolocation** — Visitor location tracking via ip-api.com
 - **Rate Limiting** — 5 requests/minute per IP
+- **Evals** — promptfoo suite for answer-quality, behavior, and model comparison (see `evals/`)
 
 ## Architecture
 
 ```
-Resume PDF (R2) → Embeddings (Gemini) → FAISS Index
-                                            ↓
-User Question → RAG Retrieval → Context + Knowledge Snippets → LLM → Streamed Response
-                                                                        ↓
-                                                              Analytics (Supabase)
+Resume PDF (R2, cached) ─┐
+                         ↓
+User Question → Full résumé + Knowledge Snippets → LLM → Streamed Response
+                                                            ↓
+                                                  Analytics (Supabase)
 ```
 
 ## Project Structure
 
 ```
 ├── app.py              # FastAPI app, routes, lifespan
-├── rag_engine.py       # PDF loading, embedding, FAISS retrieval
-├── llm_router.py       # LLM routing, streaming, fallback logic
+├── rag_engine.py       # Resume loading + caching (full-context provider)
+├── llm_router.py       # OpenRouter chat client, streaming
+├── evals/              # promptfoo eval suite (answer quality, behavior, model bake-offs)
 ├── database.py         # Supabase connection, analytics logging, knowledge CRUD
 ├── dashboard.py        # Admin dashboard (server-rendered HTML)
 ├── load_resume.py      # Resume PDF processing
@@ -54,8 +54,7 @@ User Question → RAG Retrieval → Context + Knowledge Snippets → LLM → Str
 ### Prerequisites
 
 - Python 3.12+
-- Google AI API key (Gemini)
-- Anthropic API key (Claude, for fallback)
+- OpenRouter API key (chat + embeddings)
 - Cloudflare R2 bucket with resume PDF
 - Supabase project (for analytics + knowledge base)
 
@@ -72,8 +71,8 @@ cp .env.example .env
 | Variable | Description |
 |---|---|
 | `API_KEY` | API key for chat endpoints |
-| `GOOGLE_API_KEY` | Google AI / Gemini API key |
-| `ANTHROPIC_API_KEY` | Anthropic API key (fallback) |
+| `OPENROUTER_API_KEY` | OpenRouter API key (chat) |
+| `OPENROUTER_MODEL` | Chat model slug (default `deepseek/deepseek-v4-flash`) |
 | `R2_ACCESS_KEY_ID` | Cloudflare R2 access key |
 | `R2_SECRET_ACCESS_KEY` | Cloudflare R2 secret key |
 | `R2_BUCKET_NAME` | R2 bucket name |
