@@ -1,20 +1,83 @@
 import os
+import secrets
+import logging
 from html import escape
-from fastapi import APIRouter, Query, HTTPException, Form
+from fastapi import APIRouter, HTTPException, Form, Cookie
 from fastapi.responses import HTMLResponse, RedirectResponse
 import database
 from database import add_knowledge_snippet, delete_knowledge_snippet
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN")
 
+SESSION_COOKIE = "admin_session"
+CSRF_COOKIE = "csrf_token"
+# Cookies are marked Secure except in local dev (ENV=dev), so they work over http://localhost.
+COOKIE_SECURE = os.getenv("ENV", "prod").lower() not in ("dev", "local", "test")
+COOKIE_MAX_AGE = 60 * 60 * 12  # 12h
 
-def verify_token(token: str):
+
+def _token_ok(value: str | None) -> bool:
+    """Constant-time check of a presented token against ADMIN_TOKEN."""
+    return bool(ADMIN_TOKEN and value and secrets.compare_digest(value, ADMIN_TOKEN))
+
+
+def _csrf_ok(form_value: str | None, cookie_value: str | None) -> bool:
+    """Double-submit CSRF check: form field must match the csrf cookie."""
+    return bool(form_value and cookie_value and secrets.compare_digest(form_value, cookie_value))
+
+
+def _login_page(error: str = "") -> str:
+    err = f'<p style="color:#ef4444;margin-bottom:12px">{escape(error)}</p>' if error else ""
+    return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Admin Login</title>
+<style>
+  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+         background:#f8fafc; display:flex; min-height:100vh; align-items:center; justify-content:center; }}
+  form {{ background:white; padding:32px; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.1); width:320px; }}
+  h1 {{ font-size:18px; margin-bottom:16px; }}
+  input {{ width:100%; padding:10px 12px; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:12px; }}
+  button {{ width:100%; padding:10px; background:#3b82f6; color:white; border:none; border-radius:8px; cursor:pointer; }}
+</style></head><body>
+  <form method="POST" action="/admin/login">
+    <h1>Admin Login</h1>
+    {err}
+    <input type="password" name="token" placeholder="Admin token" autofocus required>
+    <button type="submit">Sign in</button>
+  </form>
+</body></html>"""
+
+
+@router.get("/admin/login", response_class=HTMLResponse)
+async def login_form():
     if not ADMIN_TOKEN:
         raise HTTPException(status_code=503, detail="Dashboard not configured")
-    if token != ADMIN_TOKEN:
-        raise HTTPException(status_code=403, detail="Invalid token")
+    return HTMLResponse(_login_page())
+
+
+@router.post("/admin/login")
+async def login(token: str = Form(...)):
+    if not ADMIN_TOKEN:
+        raise HTTPException(status_code=503, detail="Dashboard not configured")
+    if not _token_ok(token):
+        return HTMLResponse(_login_page("Invalid token"), status_code=403)
+    resp = RedirectResponse(url="/admin/dashboard", status_code=303)
+    resp.set_cookie(
+        SESSION_COOKIE, ADMIN_TOKEN, max_age=COOKIE_MAX_AGE,
+        httponly=True, secure=COOKIE_SECURE, samesite="strict",
+    )
+    return resp
+
+
+@router.post("/admin/logout")
+async def logout():
+    resp = RedirectResponse(url="/admin/login", status_code=303)
+    resp.delete_cookie(SESSION_COOKIE)
+    resp.delete_cookie(CSRF_COOKIE)
+    return resp
 
 
 def esc(val: str | None, max_len: int = 0) -> str:
@@ -54,8 +117,17 @@ def parse_user_agent(ua: str | None) -> str:
 
 
 @router.get("/admin/dashboard", response_class=HTMLResponse)
-async def dashboard(token: str = Query(...)):
-    verify_token(token)
+async def dashboard(
+    admin_session: str | None = Cookie(None),
+    csrf_token: str | None = Cookie(None),
+):
+    if not ADMIN_TOKEN:
+        return HTMLResponse("<h1>Dashboard not configured</h1>", status_code=503)
+    if not _token_ok(admin_session):
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    # Double-submit CSRF token: reuse the existing cookie or mint a new one.
+    csrf = csrf_token or secrets.token_urlsafe(32)
 
     if not database.pool:
         return HTMLResponse("<h1>Database not connected</h1>", status_code=503)
@@ -259,7 +331,8 @@ async def dashboard(token: str = Query(...)):
             <td style="padding:8px;border-bottom:1px solid #eee">{content}</td>
             <td style="padding:8px;border-bottom:1px solid #eee;white-space:nowrap">{ts}</td>
             <td style="padding:8px;border-bottom:1px solid #eee">
-                <form method="POST" action="/admin/knowledge/delete?token={token}" style="margin:0">
+                <form method="POST" action="/admin/knowledge/delete" style="margin:0">
+                    <input type="hidden" name="csrf" value="{esc(csrf)}">
                     <input type="hidden" name="snippet_id" value="{sid}">
                     <button type="submit" style="background:#ef4444;color:white;border:none;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px">Delete</button>
                 </form>
@@ -308,6 +381,9 @@ async def dashboard(token: str = Query(...)):
         <h1>Portfolio Bot Analytics</h1>
         <p>Real-time tracking for your chatbot</p>
         <a class="refresh" href="javascript:location.reload()">Refresh</a>
+        <form method="POST" action="/admin/logout" style="display:inline;margin-left:16px">
+            <button type="submit" style="background:none;border:none;color:#64748b;cursor:pointer;font-size:14px;text-decoration:underline">Log out</button>
+        </form>
     </div>
 
     <div class="grid">
@@ -352,7 +428,8 @@ async def dashboard(token: str = Query(...)):
     <div class="section">
         <h2>Knowledge Base</h2>
         <p style="color:#64748b;font-size:13px;margin-bottom:16px">Snippets are included in every chat response as additional context. Changes take effect immediately.</p>
-        <form method="POST" action="/admin/knowledge/add?token={token}" style="display:flex;gap:12px;margin-bottom:20px;align-items:flex-start">
+        <form method="POST" action="/admin/knowledge/add" style="display:flex;gap:12px;margin-bottom:20px;align-items:flex-start">
+            <input type="hidden" name="csrf" value="{esc(csrf)}">
             <input type="text" name="label" placeholder="Label (e.g. Current Role)" required
                    style="padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;width:200px">
             <textarea name="content" placeholder="Content (e.g. Amit recently joined Intercom as a Senior FDE)" required rows="2"
@@ -452,29 +529,42 @@ async def dashboard(token: str = Query(...)):
 </body>
 </html>"""
 
-    return HTMLResponse(html)
+    resp = HTMLResponse(html)
+    resp.set_cookie(
+        CSRF_COOKIE, csrf, max_age=COOKIE_MAX_AGE,
+        httponly=True, secure=COOKIE_SECURE, samesite="strict",
+    )
+    return resp
+
+
+def _require_admin(session: str | None, csrf_form: str | None, csrf_cookie: str | None):
+    """Auth + CSRF guard for state-changing admin POSTs."""
+    if not _token_ok(session):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not _csrf_ok(csrf_form, csrf_cookie):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
 
 
 @router.post("/admin/knowledge/add")
 async def add_snippet(
-    token: str = Query(...),
     label: str = Form(...),
     content: str = Form(...),
+    csrf: str = Form(...),
+    admin_session: str | None = Cookie(None),
+    csrf_token: str | None = Cookie(None),
 ):
-    verify_token(token)
+    _require_admin(admin_session, csrf, csrf_token)
     await add_knowledge_snippet(label, content)
-    return RedirectResponse(
-        url=f"/admin/dashboard?token={token}", status_code=303
-    )
+    return RedirectResponse(url="/admin/dashboard", status_code=303)
 
 
 @router.post("/admin/knowledge/delete")
 async def remove_snippet(
-    token: str = Query(...),
     snippet_id: int = Form(...),
+    csrf: str = Form(...),
+    admin_session: str | None = Cookie(None),
+    csrf_token: str | None = Cookie(None),
 ):
-    verify_token(token)
+    _require_admin(admin_session, csrf, csrf_token)
     await delete_knowledge_snippet(snippet_id)
-    return RedirectResponse(
-        url=f"/admin/dashboard?token={token}", status_code=303
-    )
+    return RedirectResponse(url="/admin/dashboard", status_code=303)
