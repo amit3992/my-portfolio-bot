@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Self-healing database connection
+- The Postgres pool now reconnects lazily via `ensure_pool()` instead of being built
+  once at startup — so the app recovers automatically after the DB is unreachable at
+  boot (e.g. Supabase free-tier auto-pause) without a manual redeploy
+- Reconnect attempts are lock-guarded and throttled (30s) so a down DB isn't hammered
+- Failed queries drop the pool (`reset_pool()`) so a stale/dead pool self-heals
+- Dashboard shows a clearer "reconnecting" message instead of a bare 503
+
 ### Migrated to OpenRouter
 - Replaced Ollama Cloud (chat) and Google Gemini (embeddings + fallback) with OpenRouter
 - Chat model: `deepseek/deepseek-v4-flash` (OpenAI-compatible API via the `openai` SDK)

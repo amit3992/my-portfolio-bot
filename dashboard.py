@@ -129,10 +129,16 @@ async def dashboard(
     # Double-submit CSRF token: reuse the existing cookie or mint a new one.
     csrf = csrf_token or secrets.token_urlsafe(32)
 
-    if not database.pool:
-        return HTMLResponse("<h1>Database not connected</h1>", status_code=503)
+    db = await database.ensure_pool()
+    if not db:
+        return HTMLResponse(
+            "<h1>Database not connected</h1>"
+            "<p>The analytics database is unreachable (it may be paused). "
+            "It will reconnect automatically once it's back — refresh in a minute.</p>",
+            status_code=503,
+        )
 
-    async with database.pool.acquire() as conn:
+    async with db.acquire() as conn:
         # Total counts
         total = await conn.fetchval("SELECT COUNT(*) FROM chat_events")
         today = await conn.fetchval(
